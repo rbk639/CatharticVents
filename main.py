@@ -57,7 +57,6 @@ def extract_gemini_text(response):
         return response.text.strip()
 
     final_text = ""
-
     if getattr(response, "candidates", None):
         for candidate in response.candidates:
             if getattr(candidate, "content", None) and getattr(candidate.content, "parts", None):
@@ -68,11 +67,10 @@ def extract_gemini_text(response):
     return final_text.strip()
 
 
-def image_to_bytes(uploaded_file):
-    """Convert uploaded image to PNG bytes."""
-    image = Image.open(uploaded_file)
+def image_to_bytes(pil_image):
+    """Convert PIL image to PNG bytes for OpenAI."""
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
+    pil_image.save(buffer, format="PNG")
     return buffer.getvalue()
 
 
@@ -102,7 +100,7 @@ def generate_with_openai(user_text, image_bytes=None):
         )
 
     response = client.chat.completions.create(
-        model="gpt-5.4-mini",
+        model="gpt-4o-mini",  # FIX: Changed from invalid gpt-5.4-mini
         messages=[
             {
                 "role": "system",
@@ -115,28 +113,24 @@ def generate_with_openai(user_text, image_bytes=None):
         ]
     )
 
-    return response.choices[0].message.content.strip()
+    return response.choices.message.content.strip()
 
 
 # ==========================================
 # GEMINI GENERATION (FALLBACK)
 # ==========================================
 
-def generate_with_gemini(user_text, image_bytes=None):
+def generate_with_gemini(user_text, pil_image=None):
     client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
 
     contents = [SYSTEM_PROMPT, user_text]
 
-    if image_bytes:
-        contents.append(
-            {
-                "mime_type": "image/png",
-                "data": image_bytes
-            }
-        )
+    if pil_image:
+        # FIX: Passing the PIL Image object directly as supported by the new google-genai SDK
+        contents.append(pil_image)
 
     response = client.models.generate_content(
-        model="gemini-3.1-flash-lite-preview",
+        model="gemini-2.5-flash",  # FIX: Using a stable, standard model name
         contents=contents
     )
 
@@ -179,13 +173,16 @@ def main():
             return
 
         image_bytes = None
+        pil_image = None
 
         if uploaded_file:
-            image_bytes = image_to_bytes(uploaded_file)
+            pil_image = Image.open(uploaded_file)
+            image_bytes = image_to_bytes(pil_image)
+            
             st.image(
                 uploaded_file,
                 caption="Uploaded image",
-                use_container_width=True
+                width="stretch"  # FIX: Replaced deprecated use_container_width=True
             )
 
         prompt_text = user_text.strip() or "Please analyze this image and respond."
@@ -205,7 +202,7 @@ def main():
                 try:
                     response_text = generate_with_gemini(
                         prompt_text,
-                        image_bytes
+                        pil_image  # FIX: Passing the PIL object directly here
                     )
                 except Exception:
                     st.error(
