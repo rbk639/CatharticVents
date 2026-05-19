@@ -1,4 +1,5 @@
 streamlit
 openai
 google-genai
-pillow
+Pillow
+pyaudio
